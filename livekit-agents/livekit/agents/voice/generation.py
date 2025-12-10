@@ -140,6 +140,14 @@ async def _llm_inference_task(
                 if not chunk.delta:
                     continue
 
+                # Process content BEFORE tool_calls to ensure text is queued for TTS
+                # before tool execution starts. This prevents a race condition where
+                # tool execution might complete and trigger state changes before
+                # the accompanying text is spoken.
+                if chunk.delta.content:
+                    data.generated_text += chunk.delta.content
+                    text_ch.send_nowait(chunk.delta.content)
+
                 if chunk.delta.tool_calls:
                     for tool in chunk.delta.tool_calls:
                         if tool.type != "function":
@@ -153,10 +161,6 @@ async def _llm_inference_task(
                         )
                         data.generated_functions.append(fnc_call)
                         function_ch.send_nowait(fnc_call)
-
-                if chunk.delta.content:
-                    data.generated_text += chunk.delta.content
-                    text_ch.send_nowait(chunk.delta.content)
 
             elif isinstance(chunk, FlushSentinel):
                 text_ch.send_nowait(chunk)
