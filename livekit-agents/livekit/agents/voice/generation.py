@@ -261,17 +261,25 @@ async def _tts_inference_task(
         return audio_duration
 
     input_tee = itertools.tee(input, 2)
+    start_time_input, segment_input = input_tee
     finished = False
 
     async def _get_start_time() -> None:
         nonlocal start_time
-        async for chunk in input_tee[0]:
-            if not isinstance(chunk, FlushSentinel):
-                start_time = time.perf_counter()
-                break
+        try:
+            async for chunk in start_time_input:
+                if not isinstance(chunk, FlushSentinel):
+                    start_time = time.perf_counter()
+                    break
+        finally:
+            # Properly close the generator after breaking to ensure
+            # the tee peer is removed from the shared peers list.
+            # This prevents race conditions where subsequent chunks
+            # might not flow correctly to the segment_input peer.
+            await start_time_input.aclose()
 
     async def _input_segment() -> AsyncGenerator[str, None]:
-        async for chunk in input_tee[1]:
+        async for chunk in segment_input:
             if isinstance(chunk, FlushSentinel):
                 return
             yield chunk
