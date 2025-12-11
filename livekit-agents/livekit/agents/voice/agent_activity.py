@@ -2019,16 +2019,25 @@ class AgentActivity(RecognitionHooks):
             await utils.aio.cancel_and_wait(exe_task)
             return
 
-        if read_transcript_from_tts and text_out and not text_out.text:
-            logger.warning(
-                "`use_tts_aligned_transcript` is enabled but no agent transcript was returned from tts"
-            )
-
+        # Determine the final transcript text, with fallback to LLM generated text
+        final_transcript_text = ""
         if text_out and text_out.text:
+            final_transcript_text = text_out.text
+        elif llm_gen_data.generated_text:
+            # Fallback to raw LLM generated text if text forwarding didn't capture it
+            # This can happen when text and tool calls are in the same chunk
+            final_transcript_text = llm_gen_data.generated_text
+            if read_transcript_from_tts:
+                logger.warning(
+                    "`use_tts_aligned_transcript` is enabled but no agent transcript "
+                    "was returned from tts, using LLM generated text as fallback"
+                )
+
+        if final_transcript_text:
             has_speech_message = True
             msg = chat_ctx.add_message(
                 role="assistant",
-                content=text_out.text,
+                content=final_transcript_text,
                 id=llm_gen_data.id,
                 interrupted=False,
                 created_at=reply_started_at,
@@ -2037,7 +2046,7 @@ class AgentActivity(RecognitionHooks):
             self._agent._chat_ctx.insert(msg)
             self._session._conversation_item_added(msg)
             speech_handle._item_added([msg])
-            current_span.set_attribute(trace_types.ATTR_RESPONSE_TEXT, text_out.text)
+            current_span.set_attribute(trace_types.ATTR_RESPONSE_TEXT, final_transcript_text)
 
         if len(tool_output.output) > 0:
             self._session._update_agent_state("thinking")
