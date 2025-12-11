@@ -1924,11 +1924,15 @@ class AgentActivity(RecognitionHooks):
             text_out.first_text_fut.add_done_callback(_on_first_frame)
 
         # messages in RunResult are ordered by the `created_at` field
+        # Update timestamps to use reply_started_at so tool calls are ordered correctly
+        # relative to the assistant message (which also uses reply_started_at)
         def _tool_execution_started_cb(fnc_call: llm.FunctionCall) -> None:
+            fnc_call.created_at = reply_started_at
             speech_handle._item_added([fnc_call])
 
         def _tool_execution_completed_cb(out: ToolExecutionOutput) -> None:
             if out.fnc_call_out:
+                out.fnc_call_out.created_at = reply_started_at
                 speech_handle._item_added([out.fnc_call_out])
 
         # start to execute tools (only after play())
@@ -2248,6 +2252,7 @@ class AgentActivity(RecognitionHooks):
             current_span.set_attribute(trace_types.ATTR_SPEECH_INTERRUPTED, True)
             return  # TODO(theomonnom): remove the message from the serverside history
 
+        reply_started_at = time.time()
         started_speaking_at: float | None = None
         stopped_speaking_at: float | None = None
 
@@ -2392,13 +2397,17 @@ class AgentActivity(RecognitionHooks):
             )
         )
 
+        # Update timestamps to use reply_started_at so tool calls are ordered correctly
+        # relative to the assistant message (which also uses reply_started_at)
         def _tool_execution_started_cb(fnc_call: llm.FunctionCall) -> None:
+            fnc_call.created_at = reply_started_at
             speech_handle._item_added([fnc_call])
             self._agent._chat_ctx.items.append(fnc_call)
             self._session._tool_items_added([fnc_call])
 
         def _tool_execution_completed_cb(out: ToolExecutionOutput) -> None:
             if out.fnc_call_out:
+                out.fnc_call_out.created_at = reply_started_at
                 speech_handle._item_added([out.fnc_call_out])
 
         exe_task, tool_output = perform_tool_executions(
@@ -2444,9 +2453,9 @@ class AgentActivity(RecognitionHooks):
                 content=[forwarded_text],
                 id=message_id,
                 interrupted=interrupted,
+                # Use reply_started_at for consistent ordering with tool calls
+                created_at=reply_started_at,
             )
-            if started_speaking_at is not None:
-                msg.created_at = started_speaking_at
             msg.metrics = assistant_metrics
             return msg
 
