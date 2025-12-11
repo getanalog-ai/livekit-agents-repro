@@ -381,7 +381,13 @@ class LLMStream(llm.LLMStream):
                         "gemini llm: there are multiple candidates in the response, returning response from the first one."  # noqa: E501
                     )
 
-                for part in response.candidates[0].content.parts:
+                parts = response.candidates[0].content.parts
+                # Debug logging to diagnose text + tool call issue
+                logger.debug(
+                    f"Gemini response received - num_parts: {len(parts)}, "
+                    f"parts_summary: [{', '.join(f'text={repr(p.text)[:50] if p.text else None}/fn={p.function_call.name if p.function_call else None}' for p in parts)}]"
+                )
+                for part in parts:
                     chat_chunk = self._parse_part(request_id, part)
                     if chat_chunk is not None:
                         retryable = False

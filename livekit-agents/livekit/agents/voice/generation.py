@@ -140,6 +140,15 @@ async def _llm_inference_task(
                 if not chunk.delta:
                     continue
 
+                # Debug logging to diagnose text + tool call issue
+                has_content = bool(chunk.delta.content)
+                has_tool_calls = bool(chunk.delta.tool_calls)
+                if has_content or has_tool_calls:
+                    logger.debug(
+                        f"LLM chunk received - content: {repr(chunk.delta.content)[:100] if chunk.delta.content else None}, "
+                        f"tool_calls: {[t.name for t in chunk.delta.tool_calls] if chunk.delta.tool_calls else None}"
+                    )
+
                 # Process content BEFORE tool calls to ensure text is sent to TTS
                 # before tool execution starts. This prevents a race condition where
                 # tool execution callbacks could interfere with text processing.
@@ -170,6 +179,13 @@ async def _llm_inference_task(
     finally:
         if isinstance(llm_node, _ACloseable):
             await llm_node.aclose()
+
+    # Debug logging to diagnose text + tool call issue
+    logger.debug(
+        f"LLM inference complete - generated_text: {repr(data.generated_text)[:200] if data.generated_text else 'EMPTY'}, "
+        f"num_functions: {len(data.generated_functions)}, "
+        f"function_names: {[f.name for f in data.generated_functions]}"
+    )
 
     current_span.set_attribute(trace_types.ATTR_RESPONSE_TEXT, data.generated_text)
     current_span.set_attribute(
