@@ -1225,7 +1225,14 @@ class RealtimeSession(llm.RealtimeSession):
                     arguments=arguments,
                 )
             )
-        self._mark_current_generation_done()
+
+        if is_given(self._opts.tool_behavior) and self._opts.tool_behavior == "NON_BLOCKING":
+            # NON_BLOCKING: the server keeps generating audio/text while tools execute.
+            # Close only function_ch to signal tool calls are ready, but keep the
+            # generation alive so audio/text channels continue streaming.
+            gen.function_ch.close()
+        else:
+            self._mark_current_generation_done()
 
     def _handle_tool_call_cancellation(
         self, tool_call_cancellation: types.LiveServerToolCallCancellation
